@@ -40,4 +40,4 @@
 
 <div align="center">
 
-•Special thanks to @Yudharn @Mahdi_48111 @itzParsaYC @n08i40k, @Rafaelgh, @Gurinbone01, @ArianK16a, Ingres-Centre team, AOSP-Lineage Team & community
+•Special thanks to @Pzqqt, @Yudharn @Mahdi_48111 @itzParsaYC @n08i40k, @Rafaelgh, @Gurinbone01, @ArianK16a, Ingres-Centre team, AOSP-Lineage Team & community
