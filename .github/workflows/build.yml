@@ -78,7 +78,7 @@ on:
 
 
 jobs:
-  Kernel_CI:
+  Build_Kernel:
     env:
         GH_TOKEN: ${{ github.token }}
         SOC: sm8450
