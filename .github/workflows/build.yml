@@ -1,4 +1,4 @@
-name: Compile Kernel - POCO F4 GT (Ingres)
+name: Compile Kernel Melt Rebase - POCO F4 GT (Ingres)
 
 on:
   workflow_dispatch:
@@ -366,17 +366,17 @@ jobs:
            | | |
            |:---|:---|
            | 📱 Device | POCO F4 GT (ingres) • Redmi K50G (ingres) |
-           | 🟠 ROM Support | Official AOSP Only |
+           | 🟠 ROM Support | Official AOSP/HyperOS |
            | 🖥️ Kernel Name | ${KERNEL_NAME}
-           | 🧬 Kernel Base | android12-5.10.256 |
-           | 🛠️ Build Scope | ZIP, IMG |
+           | 🧬 Kernel Base | android12-5.10.261 |
+           | 🛠️ Build Scope | ZIP |
            | 📦 Source | ${{ inputs.kernel_source }} |
            | ⚔️ Kernel branch | ${{ inputs.kernel_branch }}
            | 💻 KSU Manager type | ${{ inputs.ksu_type }} 
            | 🔧 SuSFS Version | ${susfs_checkbox} 
            | ⚙️ BBG Patch | ${bbg_checkbox} 
            | ⚙️ Re-Kernel | ${rekernel_checkbox}
-           | 🔨 Compiler | LLVM +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 |
+           | 🔨 Compiler | LLVM/Clang 22.1.8 Official |
 
            ---
           " "${ZIP_FILE}"
