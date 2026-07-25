@@ -186,6 +186,8 @@ jobs:
           export OBJCOPY="${CLANG_ROOT}/llvm-objcopy"
           export OBJDUMP="${CLANG_ROOT}/llvm-objdump"
           export STRIP="${CLANG_ROOT}/llvm-strip"
+          export KBUILD_BUILD_USER="KingD2N"
+          export KBUILD_BUILD_HOST="Ingres"
 
           # ccache-ECS tuning: normalize paths/timestamps so cache hits across runs
           export CCACHE_COMPILERCHECK="none"
