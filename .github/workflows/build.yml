@@ -350,6 +350,13 @@ jobs:
         run: |
           set -e
 
+          # Everything downloaded/extracted for this step lives under its own
+          # subfolder so it never touches $GITHUB_WORKSPACE's root — a stray
+          # *.zip there (e.g. the NDK archive) would break the `ls *.zip`
+          # glob the release step uses to find the kernel zip.
+          mkdir -p rekernel-ebpf-build
+          cd rekernel-ebpf-build
+
           # ---- Host bpftool (static, decoupled from the runner's own kernel) ----
           # Used to dump BTF type info from the vmlinux we just built into a C header.
           curl -sSL -o bpftool.tar.gz \
@@ -373,10 +380,10 @@ jobs:
           # (README says pull /sys/kernel/btf/vmlinux off a running device; using
           # our own freshly-built vmlinux is equivalent and exactly matches what
           # will actually be flashed).
-          "${GITHUB_WORKSPACE}/bpftool-bin/bpftool" btf dump file \
+          "${GITHUB_WORKSPACE}/rekernel-ebpf-build/bpftool-bin/bpftool" btf dump file \
             "${GITHUB_WORKSPACE}/${SOC}/out/vmlinux" format c > include/vmlinux.h
 
-          NDK_PATH="${GITHUB_WORKSPACE}/android-ndk-r27d"
+          NDK_PATH="${GITHUB_WORKSPACE}/rekernel-ebpf-build/android-ndk-r27d"
 
           if ! make ARCH=aarch64 API=35 NDK_PATH="${NDK_PATH}"; then
             echo "::warning::Re-Kernel eBPF build failed with plain vmlinux.h — retrying with EXTRA_BPF_CFLAGS=-DRK_DEFINE_BINDER_TYPES (binder structs may be missing from our BTF dump)."
@@ -469,5 +476,4 @@ jobs:
            | 🔨 Compiler | LLVM/Clang 22.1.8 Official |
 
            ---
-          " "${ZIP_FILE}"
-          
+          " "${ASSETS[@]}"
