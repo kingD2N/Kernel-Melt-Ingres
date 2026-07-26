@@ -469,4 +469,5 @@ jobs:
            | 🔨 Compiler | LLVM/Clang 22.1.8 Official |
 
            ---
-          " "${ASSETS[@]}"
+          " "${ZIP_FILE}"
+          
