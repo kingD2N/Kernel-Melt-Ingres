@@ -58,8 +58,14 @@ on:
         required: true
         type: boolean
 
-      rekernel:
-        description: "Add Re-Kernel support"
+      rekernel_netlink:
+        description: "Add Re-Kernel support (Netlink)"
+        required: true
+        type: boolean
+        default: false
+
+      rekernel_ebpf:
+        description: "Add Re-Kernel support (eBPF)"
         required: true
         type: boolean
         default: false
@@ -115,6 +121,7 @@ jobs:
           cpio \
           ccache \
           zstd \
+          unzip \
           gcc-aarch64-linux-gnu
 
       - name: Clone Kernel Source
@@ -273,11 +280,37 @@ jobs:
             sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
           fi
 
-          if [[ "${{ inputs.rekernel }}" == true ]]; then
+          if [[ "${{ inputs.rekernel_netlink }}" == true ]]; then
             git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git rekernel-src
             bash rekernel-src/Integrate/patches.sh
             echo "CONFIG_REKERNEL=y" >> arch/arm64/configs/gki_defconfig
             echo "CONFIG_REKERNEL_NETWORK=y" >> arch/arm64/configs/gki_defconfig
+          fi
+
+          if [[ "${{ inputs.rekernel_ebpf }}" == true ]]; then
+            # Prereqs for the "Build Re-Kernel (eBPF)" step below: BTF so
+            # bpftool can dump a vmlinux.h from our own out/vmlinux (needs
+            # DEBUG_INFO_BTF; pahole/dwarves is already installed in the deps
+            # step above), plus the syscall/JIT/kprobe+uprobe/cgroup+tc attach
+            # points the eBPF program itself needs. Nothing else touches the
+            # kernel source/defconfig here — the eBPF build itself happens
+            # later, once out/vmlinux exists, and doesn't patch binder.c, so
+            # it's safe to run alongside Netlink above.
+            echo "CONFIG_BPF_SYSCALL=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_BPF_JIT=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CGROUP_BPF=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_BPF_EVENTS=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KPROBES=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_UPROBE_EVENTS=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_CLS_ACT=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_CLS_BPF=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_ACT_BPF=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_SCH_INGRESS=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_DEBUG_INFO=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_DEBUG_INFO_BTF=y" >> arch/arm64/configs/gki_defconfig
+            echo "CONFIG_DEBUG_INFO_BTF_MODULES=y" >> arch/arm64/configs/gki_defconfig
+            echo "==> Re-Kernel eBPF selected; will build after the kernel Image is ready."
           fi
 
           DROIDSPACES_CONFIG=""
@@ -312,6 +345,49 @@ jobs:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ env.CCACHE_REAL_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}
 
+      - name: Build Re-Kernel (eBPF)
+        if: ${{ inputs.rekernel_ebpf }}
+        run: |
+          set -e
+
+          # ---- Host bpftool (static, decoupled from the runner's own kernel) ----
+          # Used to dump BTF type info from the vmlinux we just built into a C header.
+          curl -sSL -o bpftool.tar.gz \
+            https://github.com/libbpf/bpftool/releases/download/v7.5.0/bpftool-v7.5.0-amd64.tar.gz
+          mkdir -p bpftool-bin
+          tar -xzf bpftool.tar.gz -C bpftool-bin
+          chmod +x bpftool-bin/bpftool
+
+          # ---- Android NDK r27d (eBPF-Source/Makefile's default NDK toolchain) ----
+          wget -q https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
+          unzip -q android-ndk-r27d-linux.zip
+
+          # ---- Fetch only the eBPF-Source subfolder from Re-Kernel ----
+          git clone --depth=1 --filter=blob:none --sparse \
+            https://github.com/Sakion-Team/Re-Kernel.git rekernel-ebpf-src
+          cd rekernel-ebpf-src
+          git sparse-checkout set eBPF-Source
+          cd eBPF-Source
+
+          # ---- Device-specific vmlinux.h, from the kernel we just built ----
+          # (README says pull /sys/kernel/btf/vmlinux off a running device; using
+          # our own freshly-built vmlinux is equivalent and exactly matches what
+          # will actually be flashed).
+          "${GITHUB_WORKSPACE}/bpftool-bin/bpftool" btf dump file \
+            "${GITHUB_WORKSPACE}/${SOC}/out/vmlinux" format c > include/vmlinux.h
+
+          NDK_PATH="${GITHUB_WORKSPACE}/android-ndk-r27d"
+
+          if ! make ARCH=aarch64 API=35 NDK_PATH="${NDK_PATH}"; then
+            echo "::warning::Re-Kernel eBPF build failed with plain vmlinux.h — retrying with EXTRA_BPF_CFLAGS=-DRK_DEFINE_BINDER_TYPES (binder structs may be missing from our BTF dump)."
+            make clean
+            make ARCH=aarch64 API=35 NDK_PATH="${NDK_PATH}" EXTRA_BPF_CFLAGS=-DRK_DEFINE_BINDER_TYPES
+          fi
+
+          mkdir -p "${GITHUB_WORKSPACE}/rekernel-ebpf-out"
+          cp out/rekernel.bpf.o "${GITHUB_WORKSPACE}/rekernel-ebpf-out/"
+          cp out/rekerneld_aarch64 "${GITHUB_WORKSPACE}/rekernel-ebpf-out/"
+
       - name: Make AnyKernel3
         run: |
           ZIP_NAME="${KERNEL_NAME}_${{ inputs.ksu_type }}"
@@ -337,6 +413,11 @@ jobs:
           cd ${GITHUB_WORKSPACE}
           ZIP_FILE=$(ls *.zip)
 
+          ASSETS=("${ZIP_FILE}")
+          if [[ "${{ inputs.rekernel_ebpf }}" == true ]]; then
+            ASSETS+=("rekernel-ebpf-out/rekernel.bpf.o" "rekernel-ebpf-out/rekerneld_aarch64")
+          fi
+
           if [[ "${{ inputs.susfs }}" == true ]]; then
             susfs_checkbox="Supported (susfs4ksu@${SUSFS_COMMIT})"
           else
@@ -349,10 +430,16 @@ jobs:
             bbg_checkbox="Unsupported"
           fi
 
-          if [[ "${{ inputs.rekernel }}" == true ]]; then
-            rekernel_checkbox="Supported"
+          if [[ "${{ inputs.rekernel_netlink }}" == true ]]; then
+            rekernel_netlink_checkbox="Supported"
           else
-            rekernel_checkbox="Unsupported"
+            rekernel_netlink_checkbox="Unsupported"
+          fi
+
+          if [[ "${{ inputs.rekernel_ebpf }}" == true ]]; then
+            rekernel_ebpf_checkbox="Supported (daemon+prog attached as release assets)"
+          else
+            rekernel_ebpf_checkbox="Unsupported"
           fi
 
           if [[ "${{ inputs.droidspaces }}" == true ]]; then
@@ -377,8 +464,9 @@ jobs:
            | 💻 KSU Manager type | ${{ inputs.ksu_type }} 
            | 🔧 SuSFS Version | ${susfs_checkbox} 
            | ⚙️ BBG Patch | ${bbg_checkbox} 
-           | ⚙️ Re-Kernel | ${rekernel_checkbox}
+           | ⚙️ Re-Kernel (Netlink) | ${rekernel_netlink_checkbox}
+           | ⚙️ Re-Kernel (eBPF) | ${rekernel_ebpf_checkbox}
            | 🔨 Compiler | LLVM/Clang 22.1.8 Official |
 
            ---
-          " "${ZIP_FILE}"
+          " "${ASSETS[@]}"
