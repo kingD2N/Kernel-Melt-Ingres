@@ -53,6 +53,12 @@ on:
         type: boolean
         default: false
 
+      susfs_commit:
+        description: "Custom commit SHA for susfs4ksu (optional; leave empty to use the latest commit on gki-android12-5.10)"
+        required: false
+        type: string
+        default: ""
+
       BBG:
         description: "Add BBG support"
         required: true
@@ -249,15 +255,22 @@ jobs:
           esac
 
           if [[ "${{ inputs.susfs }}" == true ]]; then
-            # Cloning by branch name (no tag/commit pin) always checks out the
-            # branch tip, i.e. the latest commit, at the time the job runs.
-            # --depth=1 just makes that shallow/fast; we still capture the SHA
-            # so the exact SUSFS commit used is visible in logs/release notes.
-            git clone --depth=1 -b gki-android12-5.10 https://gitlab.com/simonpunk/susfs4ksu.git susfs
+            # Full clone (no --depth) so any commit in this branch's history
+            # can be checked out below, not just the branch tip. If
+            # susfs_commit is left empty, we just stay on the tip (latest).
+            git clone -b gki-android12-5.10 https://gitlab.com/simonpunk/susfs4ksu.git susfs
             cd susfs
+
+            if [[ -n "${{ inputs.susfs_commit }}" ]]; then
+              echo "==> SUSFS: pinning to custom commit ${{ inputs.susfs_commit }}"
+              git checkout "${{ inputs.susfs_commit }}"
+            else
+              echo "==> SUSFS: using latest commit on branch gki-android12-5.10"
+            fi
+
             SUSFS_COMMIT=$(git rev-parse --short HEAD)
             echo "SUSFS_COMMIT=${SUSFS_COMMIT}" >> $GITHUB_ENV
-            echo "==> SUSFS: using latest commit ${SUSFS_COMMIT} on branch gki-android12-5.10"
+            echo "==> SUSFS: checked out commit ${SUSFS_COMMIT}"
             cp ./kernel_patches/50_add_susfs_in_gki-android12-5.10.patch ..
             cp ./kernel_patches/fs/* ../fs/
             cp ./kernel_patches/include/linux/* ../include/linux/
@@ -464,7 +477,7 @@ jobs:
            | 📱 Device | POCO F4 GT (ingres) • Redmi K50G (ingres) |
            | 🟠 ROM Support | Official AOSP/HyperOS |
            | 🖥️ Kernel Name | ${KERNEL_NAME}
-           | 🧬 Kernel Base | android12-5.10.261 |
+           | 🧬 Kernel Base | android12-5.10.260 |
            | 🛠️ Build Scope | ZIP |
            | 📦 Source | ${{ inputs.kernel_source }} |
            | ⚔️ Kernel branch | ${{ inputs.kernel_branch }}
