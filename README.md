@@ -1,5 +1,8 @@
 <div align="center">
 
+
+<img width="1380" height="752" alt="1000339818" src="https://github.com/user-attachments/assets/9c288842-4114-44fd-841f-7ee013dd8094" />
+
 #     ✧ Kernel Melt Rebase ✧
 
 #   ✧ For POCO F4 GT (ingres) ✧
