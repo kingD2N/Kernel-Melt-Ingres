@@ -38,7 +38,7 @@ on:
           - KowSU
           - ReSukiSU
           - SukiSUUltra
-          - MirahSyakilla-KSUN
+          - KSUN-MirahSyakilla
 
       custom_name:
         description: "kernel"
@@ -254,20 +254,24 @@ jobs:
               curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
               ;;
 
-            "MirahSyakilla-KSUN")
-              # Fork ini punya dukungan susfs bawaan lewat kprobes hook
-              # (branch susfs+nomount-hookless), jadi TIDAK memakai jalur
-              # susfs4ksu/patch di bawah (blok "inputs.susfs") - lihat
-              # pengecualian yang ditambahkan pada blok tsb.
+            "KSUN-MirahSyakilla")
+              # MirahSyakilla's KSUN fork, susfs+nomount-hookless branch.
+              # This branch bundles its own susfs/nomount/branchlink hooks via
+              # kprobes, so leave the "susfs" workflow input OFF when picking
+              # this option — the susfs4ksu patch block further below is for
+              # the other KSU variants, not this one.
               curl -LSs "https://raw.githubusercontent.com/MirahSyakilla/KSUN/main/kernel/setup.sh" | bash -s susfs+nomount-hookless
 
+              # Enable susfs, nomount and branchlink hooks for this fork.
               echo "CONFIG_KSU=y" >> arch/arm64/configs/gki_defconfig
               echo "CONFIG_KSU_KPROBES_HOOK=y" >> arch/arm64/configs/gki_defconfig
               echo "CONFIG_KSU_HACK_ARM64_BRANCH_LINK=y" >> arch/arm64/configs/gki_defconfig
               echo "CONFIG_KSU_KPROBES_NOMOUNT=y" >> arch/arm64/configs/gki_defconfig
               echo "CONFIG_KSU_KPROBES_SUSFS=y" >> arch/arm64/configs/gki_defconfig
 
-              # Required by this fork's defconfig until upstream fixes it
+              # Base kprobes/kallsyms infra this fork requires. Already in the
+              # gki_defconfig baseline for this device, but forced here too in
+              # case kernel_source is overridden with a defconfig missing them.
               echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/gki_defconfig
               echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/gki_defconfig
               echo "CONFIG_KPROBES=y" >> arch/arm64/configs/gki_defconfig
@@ -277,7 +281,7 @@ jobs:
               ;;
           esac
 
-          if [[ "${{ inputs.susfs }}" == true && "${{ inputs.ksu_type }}" != "MirahSyakilla-KSUN" ]]; then
+          if [[ "${{ inputs.susfs }}" == true ]]; then
             # Full clone (no --depth) so any commit in this branch's history
             # can be checked out below, not just the branch tip. If
             # susfs_commit is left empty, we just stay on the tip (latest).
@@ -461,9 +465,7 @@ jobs:
             ASSETS+=("rekernel-ebpf-out/rekernel.bpf.o" "rekernel-ebpf-out/rekerneld_aarch64")
           fi
 
-          if [[ "${{ inputs.ksu_type }}" == "MirahSyakilla-KSUN" ]]; then
-            susfs_checkbox="Supported (KSUN fork, kprobes-based, susfs+nomount-hookless)"
-          elif [[ "${{ inputs.susfs }}" == true ]]; then
+          if [[ "${{ inputs.susfs }}" == true ]]; then
             susfs_checkbox="Supported (susfs4ksu@${SUSFS_COMMIT})"
           else
             susfs_checkbox="Unsupported"
